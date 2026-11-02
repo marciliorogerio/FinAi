@@ -39,8 +39,8 @@ async function startServer() {
   const distPath = path.resolve(__dirname, 'dist');
   const hasDist = fs.existsSync(distPath) && fs.existsSync(path.resolve(distPath, 'index.html'));
 
-  if (isProduction && hasDist) {
-    // In production mode with built dist, serve built static assets from dist
+  if (hasDist) {
+    // Serve static files from compiled dist folder (prevents Vite dev HMR websocket errors)
     app.use(express.static(distPath));
 
     app.get('*', (_req: Request, res: Response) => {
