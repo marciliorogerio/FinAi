@@ -168,7 +168,7 @@ export const BottomTabBar: React.FC<BottomTabBarProps> = ({
       {/* Main Bottom Bar Navigation */}
       <nav
         aria-label="Navegação Principal Mobile"
-        className="fixed bottom-0 left-0 right-0 z-40 bg-white/95 backdrop-blur-md border-t border-neutral-200/90 pb-safe lg:hidden shadow-[0_-4px_20px_rgba(0,0,0,0.06)] select-none"
+        className="fixed bottom-0 left-0 right-0 z-40 bg-white/95 backdrop-blur-md border-t border-neutral-200/90 pb-safe lg:hidden shadow-[0_-4px_20px_rgba(0,0,0,0.06)] select-none transform-gpu translate-z-0 translate-y-0"
       >
         <div className="grid grid-cols-5 items-center h-16 max-w-lg mx-auto px-1">
           {/* 1. Início */}

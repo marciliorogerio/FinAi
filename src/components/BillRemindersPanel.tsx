@@ -276,7 +276,15 @@ export const BillRemindersPanel: React.FC<BillRemindersPanelProps> = ({
       }
     });
 
-    return [...projectedCardBills, ...mappedBills];
+    const combined = [...projectedCardBills, ...mappedBills];
+    return combined.sort((a, b) => {
+      const dateA = normalizeDateStr(a.dueDate);
+      const dateB = normalizeDateStr(b.dueDate);
+      if (dateA !== dateB) {
+        return dateA.localeCompare(dateB);
+      }
+      return a.title.localeCompare(b.title);
+    });
   }, [bills, accounts, transactions, currentCompetenceStr, viewScope]);
 
   // Compute status counts & sums for current Competência
@@ -316,9 +324,9 @@ export const BillRemindersPanel: React.FC<BillRemindersPanelProps> = ({
     };
   }, [competenceBills]);
 
-  // Filtered bills by Search Query and Status Filter
+  // Filtered bills by Search Query and Status Filter, strictly ordered by due date ascending
   const filteredBills = useMemo(() => {
-    return competenceBills.filter((b) => {
+    const list = competenceBills.filter((b) => {
       // Search text
       if (searchQuery.trim()) {
         const query = searchQuery.toLowerCase();
@@ -337,6 +345,15 @@ export const BillRemindersPanel: React.FC<BillRemindersPanelProps> = ({
       if (statusFilter === 'paid') return b.isPaid;
 
       return true;
+    });
+
+    return list.sort((a, b) => {
+      const dateA = normalizeDateStr(a.dueDate);
+      const dateB = normalizeDateStr(b.dueDate);
+      if (dateA !== dateB) {
+        return dateA.localeCompare(dateB);
+      }
+      return a.title.localeCompare(b.title);
     });
   }, [competenceBills, searchQuery, statusFilter]);
 
