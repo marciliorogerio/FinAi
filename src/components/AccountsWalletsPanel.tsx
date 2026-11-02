@@ -49,7 +49,7 @@ const PRESET_ACCOUNTS = [
   { name: 'Carteira Dinheiro', type: 'cash' as const, color: 'border-emerald-200 bg-emerald-50/60 text-emerald-900' },
 ];
 
-export const AccountsWalletsPanel: React.FC<AccountsWalletsPanelProps> = ({
+export const AccountsWalletsPanel: React.FC<AccountsWalletsPanelProps> = React.memo(({
   accounts,
   onUpdateAccounts,
   transactions = [],
@@ -554,4 +554,4 @@ export const AccountsWalletsPanel: React.FC<AccountsWalletsPanelProps> = ({
       />
     </div>
   );
-};
+});

@@ -19,7 +19,7 @@ interface BottomTabBarProps {
   setActiveTab: (tab: AppTab) => void;
 }
 
-export const BottomTabBar: React.FC<BottomTabBarProps> = ({
+export const BottomTabBar: React.FC<BottomTabBarProps> = React.memo(({
   activeTab,
   setActiveTab,
 }) => {
@@ -283,4 +283,4 @@ export const BottomTabBar: React.FC<BottomTabBarProps> = ({
       </nav>
     </>
   );
-};
+});

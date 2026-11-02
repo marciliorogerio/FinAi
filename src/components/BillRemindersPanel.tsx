@@ -40,7 +40,7 @@ interface BillRemindersPanelProps {
 
 type StatusFilterType = 'all' | 'overdue' | 'today' | 'next7' | 'upcoming' | 'paid';
 
-export const BillRemindersPanel: React.FC<BillRemindersPanelProps> = ({
+export const BillRemindersPanel: React.FC<BillRemindersPanelProps> = React.memo(({
   bills: propBills,
   onUpdateBills,
   accounts = [],
@@ -1695,4 +1695,4 @@ export const BillRemindersPanel: React.FC<BillRemindersPanelProps> = ({
       />
     </div>
   );
-};
+});

@@ -43,7 +43,7 @@ interface HomeOverviewViewProps {
   onShowToast: (message: string, type?: 'success' | 'error') => void;
 }
 
-export const HomeOverviewView: React.FC<HomeOverviewViewProps> = ({
+export const HomeOverviewView: React.FC<HomeOverviewViewProps> = React.memo(({
   summary,
   transactions,
   bills,
@@ -546,4 +546,4 @@ export const HomeOverviewView: React.FC<HomeOverviewViewProps> = ({
       </div>
     </div>
   );
-};
+});

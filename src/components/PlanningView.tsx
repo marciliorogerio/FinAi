@@ -68,7 +68,7 @@ const CATEGORY_COLORS: Record<string, { bg: string; text: string; bar: string }>
   Outros: { bg: 'bg-neutral-100', text: 'text-neutral-700', bar: 'bg-neutral-500' },
 };
 
-export const PlanningView: React.FC<PlanningViewProps> = ({
+export const PlanningView: React.FC<PlanningViewProps> = React.memo(({
   summary,
   transactions,
   categoryBudgets,
@@ -1200,4 +1200,4 @@ export const PlanningView: React.FC<PlanningViewProps> = ({
       />
     </div>
   );
-};
+});

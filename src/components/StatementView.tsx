@@ -48,7 +48,7 @@ const CATEGORIES = [
   'Outros',
 ];
 
-export const StatementView: React.FC<StatementViewProps> = ({
+export const StatementView: React.FC<StatementViewProps> = React.memo(({
   transactions,
   accounts = [],
   initialAccountFilter = 'all',
@@ -668,4 +668,4 @@ export const StatementView: React.FC<StatementViewProps> = ({
       />
     </div>
   );
-};
+});

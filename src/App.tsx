@@ -236,6 +236,20 @@ export default function App() {
     [user?.id]
   );
 
+  // Directly persist bills state, local cache and Supabase cloud metadata synchronously
+  const persistBills = useCallback(
+    async (updatedBills: BillReminder[]) => {
+      setBills(updatedBills);
+      const storageKey = user?.id ? `finai_bills_${user.id}` : 'finai_local_bills';
+      try {
+        localStorage.setItem(storageKey, JSON.stringify(updatedBills));
+        localStorage.setItem('finai_cached_bills', JSON.stringify(updatedBills));
+      } catch {}
+      await saveBillsToSupabase(updatedBills, user?.id, true);
+    },
+    [user?.id]
+  );
+
   // Reload data directly from Supabase, strictly isolating by authenticated user
   const reloadFromSupabase = useCallback(async (currentUserId?: string) => {
     setIsLoadingSupabase(true);
@@ -479,9 +493,8 @@ export default function App() {
       const storageKey = user?.id ? `finai_bills_${user.id}` : 'finai_local_bills';
       localStorage.setItem(storageKey, JSON.stringify(bills));
       localStorage.setItem('finai_cached_bills', JSON.stringify(bills));
-      saveBillsToSupabase(bills, user?.id, true);
     } catch (e) {
-      console.warn('Error saving bills to localStorage/Supabase:', e);
+      console.warn('Error saving bills to localStorage:', e);
     }
   }, [bills, user?.id]);
 
@@ -491,9 +504,8 @@ export default function App() {
       const storageKey = user?.id ? `finai_accounts_${user.id}` : 'finai_local_accounts';
       localStorage.setItem(storageKey, JSON.stringify(accounts));
       localStorage.setItem('finai_cached_accounts', JSON.stringify(accounts));
-      saveAccountsToSupabase(accounts, user?.id, true);
     } catch (e) {
-      console.warn('Error saving accounts:', e);
+      console.warn('Error saving accounts to localStorage:', e);
     }
   }, [accounts, user?.id]);
 
@@ -1046,13 +1058,8 @@ export default function App() {
           <div className="space-y-6 pb-20 sm:pb-12 animate-in fade-in duration-150">
             <BillRemindersPanel
               bills={bills}
-              onUpdateBills={(updated) => {
-                setBills(updated);
-                const storageKey = user?.id ? `finai_bills_${user.id}` : 'finai_local_bills';
-                try {
-                  localStorage.setItem(storageKey, JSON.stringify(updated));
-                } catch {}
-                saveBillsToSupabase(updated, user?.id, true);
+              onUpdateBills={async (updated) => {
+                await persistBills(updated);
               }}
               accounts={accounts}
               transactions={transactions}

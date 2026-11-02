@@ -28,7 +28,7 @@ interface HeaderProps {
   isSupabaseConnected?: boolean;
 }
 
-export const Header: React.FC<HeaderProps> = ({
+export const Header: React.FC<HeaderProps> = React.memo(({
   user,
   activeTab,
   setActiveTab,
@@ -208,4 +208,4 @@ export const Header: React.FC<HeaderProps> = ({
       </div>
     </header>
   );
-};
+});
