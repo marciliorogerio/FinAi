@@ -1,0 +1,10 @@
+{
+  "name": "Assistente Financeiro IA",
+  "description": "Assistente inteligente de finanças pessoais com backend Supabase (PostgreSQL), suporte a áudio, notas fiscais e chat consultivo.",
+  "requestFramePermissions": [
+    "microphone"
+  ],
+  "majorCapabilities": [
+    "MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"
+  ]
+}
