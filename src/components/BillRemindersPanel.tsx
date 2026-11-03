@@ -231,22 +231,6 @@ export const BillRemindersPanel: React.FC<BillRemindersPanelProps> = React.memo(
       const cardNorm = card.name.toLowerCase().trim();
       const cardToken = cardNorm.split(' ')[0];
 
-      // Check if a bill for this card's invoice already exists in mappedBills (paid or unpaid)
-      const existingCardBill = mappedBills.find(
-        (b) =>
-          b.title.toLowerCase().includes(`fatura cartão ${cardNorm}`) ||
-          b.title.toLowerCase().includes(`fatura ${cardNorm}`) ||
-          (b.category === 'Cartão de Crédito' && (
-            (b.account && b.account.toLowerCase().trim() === cardNorm) ||
-            b.title.toLowerCase().includes(cardToken)
-          ))
-      );
-
-      // If a card bill already exists in this competence, do not project an unpaid duplicate!
-      if (existingCardBill) {
-        return;
-      }
-
       // Check credit card purchases
       const cardTxs = transactions.filter((t) => {
         if (t.type !== 'despesa') return false;
@@ -257,8 +241,7 @@ export const BillRemindersPanel: React.FC<BillRemindersPanelProps> = React.memo(
           txAccountNorm === cardNorm ||
           txAccountNorm === `cartão ${cardNorm}` ||
           txAccountNorm === `cartao ${cardNorm}` ||
-          txAccountNorm.includes(cardToken) ||
-          cardNorm.includes(txAccountNorm.split(' ')[0]);
+          (cardToken && (txAccountNorm.includes(cardToken) || cardNorm.includes(txAccountNorm.split(' ')[0])));
 
         return isCreditMethod && matchesAccount;
       });
@@ -280,9 +263,9 @@ export const BillRemindersPanel: React.FC<BillRemindersPanelProps> = React.memo(
 
         const matchesAccount =
           descNorm.includes(cardNorm) ||
-          descNorm.includes(cardToken) ||
+          (cardToken && descNorm.includes(cardToken)) ||
           notesNorm.includes(cardNorm) ||
-          notesNorm.includes(cardToken) ||
+          (cardToken && notesNorm.includes(cardToken)) ||
           (t.account || '').toLowerCase().trim() === cardNorm;
 
         return isPayment && matchesAccount;
@@ -290,50 +273,69 @@ export const BillRemindersPanel: React.FC<BillRemindersPanelProps> = React.memo(
 
       const paymentsSum = invoicePayments.reduce((sum, t) => sum + (Number(t.amount) || 0), 0);
 
-      const baseAmount =
-        txSum > 0
-          ? txSum
-          : card.type === 'credit' && card.balance && card.balance > 0
-          ? card.balance
-          : 0;
+      const cardInitBal = card.initialBalance || 0;
+      const cardAccBal = card.balance && card.balance > 0 ? card.balance : 0;
+      const baseAmount = txSum > 0 ? cardInitBal + txSum : cardAccBal || cardInitBal || 0;
 
       const remainingInvoice = Math.max(0, Math.round((baseAmount - paymentsSum) * 100) / 100);
 
-      if (remainingInvoice > 0) {
-        const cardDueDay = Math.min(card.dueDay || 12, maxDays);
-        const cardDueDate = `${currY}-${String(currM).padStart(2, '0')}-${String(cardDueDay).padStart(2, '0')}`;
-        const cardTitle = `Fatura Cartão ${card.name}`;
+      // Check if a bill for this card's invoice already exists in mappedBills (paid or unpaid)
+      const existingCardBillIndex = mappedBills.findIndex(
+        (b) =>
+          b.title.toLowerCase().includes(`fatura cartão ${cardNorm}`) ||
+          b.title.toLowerCase().includes(`fatura ${cardNorm}`) ||
+          (b.category === 'Cartão de Crédito' && (
+            (b.account && b.account.toLowerCase().trim() === cardNorm) ||
+            b.title.toLowerCase().includes(cardToken)
+          ))
+      );
 
-        projectedCardBills.push({
-          id: `cc-invoice-${card.id}-${currentCompetenceStr}`,
-          title: cardTitle,
-          amount: remainingInvoice,
-          dueDate: cardDueDate,
-          category: 'Cartão de Crédito',
-          isPaid: false,
-          account: card.name,
-          paymentMethod: 'Cartão de Crédito',
-          isRecurring: false,
-          recurringMonthly: false,
-        });
-      } else if (paymentsSum > 0 && baseAmount > 0) {
-        // If invoice was paid in full, present it as paid for this competence
-        const cardDueDay = Math.min(card.dueDay || 12, maxDays);
-        const cardDueDate = `${currY}-${String(currM).padStart(2, '0')}-${String(cardDueDay).padStart(2, '0')}`;
-        const cardTitle = `Fatura Cartão ${card.name}`;
+      if (existingCardBillIndex >= 0) {
+        const existing = mappedBills[existingCardBillIndex];
+        // Dynamic update of existing card bill amount to match live transactions/invoice sum
+        if (!existing.isPaid || remainingInvoice > 0) {
+          mappedBills[existingCardBillIndex] = {
+            ...existing,
+            amount: remainingInvoice > 0 ? remainingInvoice : (paymentsSum > 0 ? baseAmount : existing.amount),
+            isPaid: remainingInvoice === 0 && (paymentsSum >= baseAmount || existing.isPaid),
+          };
+        }
+      } else {
+        if (remainingInvoice > 0) {
+          const cardDueDay = Math.min(card.dueDay || 12, maxDays);
+          const cardDueDate = `${currY}-${String(currM).padStart(2, '0')}-${String(cardDueDay).padStart(2, '0')}`;
+          const cardTitle = `Fatura Cartão ${card.name}`;
 
-        projectedCardBills.push({
-          id: `cc-invoice-${card.id}-${currentCompetenceStr}`,
-          title: cardTitle,
-          amount: baseAmount,
-          dueDate: cardDueDate,
-          category: 'Cartão de Crédito',
-          isPaid: true,
-          account: card.name,
-          paymentMethod: 'Boleto',
-          isRecurring: false,
-          recurringMonthly: false,
-        });
+          projectedCardBills.push({
+            id: `cc-invoice-${card.id}-${currentCompetenceStr}`,
+            title: cardTitle,
+            amount: remainingInvoice,
+            dueDate: cardDueDate,
+            category: 'Cartão de Crédito',
+            isPaid: false,
+            account: card.name,
+            paymentMethod: 'Cartão de Crédito',
+            isRecurring: false,
+            recurringMonthly: false,
+          });
+        } else if (paymentsSum > 0 && baseAmount > 0) {
+          const cardDueDay = Math.min(card.dueDay || 12, maxDays);
+          const cardDueDate = `${currY}-${String(currM).padStart(2, '0')}-${String(cardDueDay).padStart(2, '0')}`;
+          const cardTitle = `Fatura Cartão ${card.name}`;
+
+          projectedCardBills.push({
+            id: `cc-invoice-${card.id}-${currentCompetenceStr}`,
+            title: cardTitle,
+            amount: baseAmount,
+            dueDate: cardDueDate,
+            category: 'Cartão de Crédito',
+            isPaid: true,
+            account: card.name,
+            paymentMethod: 'Boleto',
+            isRecurring: false,
+            recurringMonthly: false,
+          });
+        }
       }
     });
 

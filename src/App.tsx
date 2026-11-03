@@ -158,19 +158,47 @@ export default function App() {
       const norm = name.toLowerCase();
       const token = norm.split(' ')[0];
 
-      const idx = targetAccounts.findIndex((a) => {
-        const aNorm = a.name.toLowerCase();
-        return aNorm.includes(token) || norm.includes(aNorm.split(' ')[0]);
-      });
-
       // Purchases made on Credit Card do NOT debit checking or cash accounts immediately!
       const isCreditPurchase = type === 'despesa' && paymentMethod === 'Cartão de Crédito';
+
+      // If it's a credit purchase, search specifically for a credit card account matching token first
+      let idx = -1;
+      if (isCreditPurchase) {
+        idx = targetAccounts.findIndex((a) => {
+          if (a.type !== 'credit') return false;
+          const aNorm = a.name.toLowerCase();
+          return aNorm.includes(token) || norm.includes(aNorm.split(' ')[0]);
+        });
+      }
+
+      // If no credit account found or not a credit purchase, find matching account by name
+      if (idx < 0) {
+        idx = targetAccounts.findIndex((a) => {
+          const aNorm = a.name.toLowerCase();
+          return aNorm.includes(token) || norm.includes(aNorm.split(' ')[0]);
+        });
+      }
 
       if (idx >= 0) {
         const targetAcc = targetAccounts[idx];
 
         // If it's a purchase made on credit and the target account is checking/cash/savings, do NOT debit checking balance
         if (isCreditPurchase && targetAcc.type !== 'credit') {
+          const creditAccExists = targetAccounts.some((a) => a.type === 'credit');
+          if (!creditAccExists && direction === 'apply') {
+            const newCard: AccountWallet = {
+              id: `acc-${Date.now()}`,
+              name,
+              type: 'credit',
+              balance: amount,
+              initialBalance: 0,
+              color: getDefaultAccountColor(name),
+              creditLimit: 3000,
+              closingDay: 5,
+              dueDay: 12,
+            };
+            return [...targetAccounts, newCard];
+          }
           return targetAccounts;
         }
 

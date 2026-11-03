@@ -95,8 +95,7 @@ export const CreditCardsPanel: React.FC<CreditCardsPanelProps> = ({
         txAccountNorm === cardNorm ||
         txAccountNorm === `cartão ${cardNorm}` ||
         txAccountNorm === `cartao ${cardNorm}` ||
-        txAccountNorm.includes(cardToken) ||
-        cardNorm.includes(txAccountNorm.split(' ')[0]);
+        (cardToken && (txAccountNorm.includes(cardToken) || cardNorm.includes(txAccountNorm.split(' ')[0])));
 
       return isCreditMethod && matchesAccount;
     });
@@ -122,9 +121,9 @@ export const CreditCardsPanel: React.FC<CreditCardsPanelProps> = ({
 
       const matchesCard =
         descNorm.includes(cardNorm) ||
-        descNorm.includes(cardToken) ||
+        (cardToken && descNorm.includes(cardToken)) ||
         notesNorm.includes(cardNorm) ||
-        notesNorm.includes(cardToken) ||
+        (cardToken && notesNorm.includes(cardToken)) ||
         (t.account || '').toLowerCase().trim() === cardNorm;
 
       return isInvoicePayment && matchesCard;
@@ -138,17 +137,17 @@ export const CreditCardsPanel: React.FC<CreditCardsPanelProps> = ({
     const payments = getCardPayments(cardName);
     const paymentsSum = payments.reduce((sum, t) => sum + (Number(t.amount) || 0), 0);
 
-    const baseAmount =
-      txSum > 0
-        ? txSum
-        : (() => {
-            const cardAcc = accounts.find(
-              (a) => a.type === 'credit' && a.name.toLowerCase().trim() === cardName.toLowerCase().trim()
-            );
-            return cardAcc && cardAcc.type === 'credit' && cardAcc.balance && cardAcc.balance > 0
-              ? cardAcc.balance
-              : 0;
-          })();
+    const cardAcc = accounts.find(
+      (a) =>
+        a.type === 'credit' &&
+        (a.name.toLowerCase().trim() === cardName.toLowerCase().trim() ||
+          a.name.toLowerCase().includes(cardName.toLowerCase().split(' ')[0]))
+    );
+
+    const cardInitBal = cardAcc && cardAcc.initialBalance ? cardAcc.initialBalance : 0;
+    const cardAccBal = cardAcc && cardAcc.balance && cardAcc.balance > 0 ? cardAcc.balance : 0;
+
+    const baseAmount = txSum > 0 ? cardInitBal + txSum : cardAccBal || cardInitBal || 0;
 
     return Math.max(0, Math.round((baseAmount - paymentsSum) * 100) / 100);
   };
