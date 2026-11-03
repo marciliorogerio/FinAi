@@ -178,40 +178,66 @@ export const BillRemindersPanel: React.FC<BillRemindersPanelProps> = React.memo(
     const [currY, currM] = currentCompetenceStr.split('-').map(Number);
     const maxDays = new Date(currY, currM, 0).getDate();
 
-    const mappedBills = bills.map((b) => {
-      if (viewScope === 'all') {
-        return {
-          ...b,
-          dueDate: normalizeDateStr(b.dueDate),
-        };
-      }
-      const ym = getDueYearMonth(b.dueDate);
-      const isRecurring = Boolean(b.recurringMonthly || b.isRecurring || b.recurrenceFrequency === 'mensal');
+    const directBills = bills.map((b) => ({
+      ...b,
+      dueDate: normalizeDateStr(b.dueDate),
+    }));
 
-      if (isRecurring && ym !== currentCompetenceStr) {
-        const norm = normalizeDateStr(b.dueDate);
-        const day = Number(norm.split('-')[2]) || 10;
-        const safeDay = Math.min(day, maxDays);
-        const projectedDueDate = `${currY}-${String(currM).padStart(2, '0')}-${String(safeDay).padStart(2, '0')}`;
-        return {
-          ...b,
-          dueDate: projectedDueDate,
-        };
-      }
-      return {
-        ...b,
-        dueDate: normalizeDateStr(b.dueDate),
-      };
-    }).filter((b) => {
-      if (viewScope === 'all') return true;
-      const ym = getDueYearMonth(b.dueDate);
-      const isMatchMonth = ym === currentCompetenceStr;
-      const isRecurring = Boolean(b.recurringMonthly || b.isRecurring || b.recurrenceFrequency === 'mensal');
-      const days = getDaysUntilDue(b.dueDate);
-      const isOverdueUnpaid = !b.isPaid && days < 0;
+    let mappedBills: BillReminder[];
 
-      return isMatchMonth || isRecurring || isOverdueUnpaid;
-    });
+    if (viewScope === 'all') {
+      mappedBills = directBills;
+    } else {
+      // Find bills that belong to current competence month
+      const currentMonthBills = directBills.filter((b) => {
+        const ym = getDueYearMonth(b.dueDate);
+        return ym === currentCompetenceStr;
+      });
+
+      // Find unpaid overdue bills from PREVIOUS months that need attention
+      const overdueUnpaid = directBills.filter((b) => {
+        const ym = getDueYearMonth(b.dueDate);
+        const days = getDaysUntilDue(b.dueDate);
+        return !b.isPaid && days < 0 && ym < currentCompetenceStr;
+      });
+
+      // Find recurring bills from PREVIOUS months that have no instance in current month yet
+      const previousRecurringToProject: BillReminder[] = [];
+      directBills.forEach((b) => {
+        const ym = getDueYearMonth(b.dueDate);
+        const isRecurring = Boolean(b.recurringMonthly || b.isRecurring || b.recurrenceFrequency === 'mensal');
+        const isCreditCard =
+          b.id.startsWith('cc-invoice-') ||
+          b.id.startsWith('bill-card-') ||
+          (b.category === 'Cartão de Crédito' && b.title.toLowerCase().includes('fatura'));
+
+        // Never project credit card invoices or future bills
+        if (!isCreditCard && isRecurring && ym < currentCompetenceStr) {
+          const baseTitle = b.title.replace(/\(\d+\/\d+\)/, '').trim().toLowerCase();
+          const alreadyInCurrentMonth = currentMonthBills.some(
+            (cb) => cb.title.replace(/\(\d+\/\d+\)/, '').trim().toLowerCase() === baseTitle
+          );
+          const alreadyProjected = previousRecurringToProject.some(
+            (pb) => pb.title.replace(/\(\d+\/\d+\)/, '').trim().toLowerCase() === baseTitle
+          );
+
+          if (!alreadyInCurrentMonth && !alreadyProjected) {
+            const norm = normalizeDateStr(b.dueDate);
+            const day = Number(norm.split('-')[2]) || 10;
+            const safeDay = Math.min(day, maxDays);
+            const projectedDueDate = `${currY}-${String(currM).padStart(2, '0')}-${String(safeDay).padStart(2, '0')}`;
+            previousRecurringToProject.push({
+              ...b,
+              id: `rec-proj-${b.id}-${currentCompetenceStr}`,
+              dueDate: projectedDueDate,
+              isPaid: false,
+            });
+          }
+        }
+      });
+
+      mappedBills = [...currentMonthBills, ...overdueUnpaid, ...previousRecurringToProject];
+    }
 
     // Credit Card open invoice dynamic projection into Contas a Pagar
     const creditCards = accounts.filter((a) => a.type === 'credit' || (a.creditLimit && a.creditLimit > 0));
@@ -221,6 +247,23 @@ export const BillRemindersPanel: React.FC<BillRemindersPanelProps> = React.memo(
       const cardNorm = card.name.toLowerCase().trim();
       const cardToken = cardNorm.split(' ')[0];
 
+      // Check if a bill for this card's invoice already exists in mappedBills (paid or unpaid)
+      const existingCardBill = mappedBills.find(
+        (b) =>
+          b.title.toLowerCase().includes(`fatura cartão ${cardNorm}`) ||
+          b.title.toLowerCase().includes(`fatura ${cardNorm}`) ||
+          (b.category === 'Cartão de Crédito' && (
+            (b.account && b.account.toLowerCase().trim() === cardNorm) ||
+            b.title.toLowerCase().includes(cardToken)
+          ))
+      );
+
+      // If a card bill already exists in this competence, do not project an unpaid duplicate!
+      if (existingCardBill) {
+        return;
+      }
+
+      // Check credit card purchases
       const cardTxs = transactions.filter((t) => {
         if (t.type !== 'despesa') return false;
         const isCreditMethod = t.paymentMethod === 'Cartão de Crédito';
@@ -238,41 +281,75 @@ export const BillRemindersPanel: React.FC<BillRemindersPanelProps> = React.memo(
 
       const txSum = cardTxs.reduce((sum, t) => sum + (Number(t.amount) || 0), 0);
 
-      // Only use card.balance if card is strictly a credit card (card.type === 'credit')
-      const invoiceAmount =
+      // Check invoice payments made for this card
+      const invoicePayments = transactions.filter((t) => {
+        if (t.type !== 'despesa') return false;
+        if (t.paymentMethod === 'Cartão de Crédito') return false;
+
+        const descNorm = (t.description || '').toLowerCase();
+        const notesNorm = (t.notes || '').toLowerCase();
+        const isPayment =
+          descNorm.includes('fatura') ||
+          descNorm.includes('pagamento:') ||
+          notesNorm.includes('fatura') ||
+          t.category === 'Cartão de Crédito';
+
+        const matchesAccount =
+          descNorm.includes(cardNorm) ||
+          descNorm.includes(cardToken) ||
+          notesNorm.includes(cardNorm) ||
+          notesNorm.includes(cardToken) ||
+          (t.account || '').toLowerCase().trim() === cardNorm;
+
+        return isPayment && matchesAccount;
+      });
+
+      const paymentsSum = invoicePayments.reduce((sum, t) => sum + (Number(t.amount) || 0), 0);
+
+      const baseAmount =
         txSum > 0
           ? txSum
           : card.type === 'credit' && card.balance && card.balance > 0
           ? card.balance
           : 0;
 
-      if (invoiceAmount > 0) {
+      const remainingInvoice = Math.max(0, Math.round((baseAmount - paymentsSum) * 100) / 100);
+
+      if (remainingInvoice > 0) {
         const cardDueDay = Math.min(card.dueDay || 12, maxDays);
         const cardDueDate = `${currY}-${String(currM).padStart(2, '0')}-${String(cardDueDay).padStart(2, '0')}`;
         const cardTitle = `Fatura Cartão ${card.name}`;
 
-        const alreadyExists = mappedBills.some(
-          (b) =>
-            b.title.toLowerCase().includes(card.name.toLowerCase()) ||
-            (b.account &&
-              b.account.toLowerCase().trim() === card.name.toLowerCase().trim() &&
-              b.category === 'Cartão de Crédito')
-        );
+        projectedCardBills.push({
+          id: `cc-invoice-${card.id}-${currentCompetenceStr}`,
+          title: cardTitle,
+          amount: remainingInvoice,
+          dueDate: cardDueDate,
+          category: 'Cartão de Crédito',
+          isPaid: false,
+          account: card.name,
+          paymentMethod: 'Cartão de Crédito',
+          isRecurring: false,
+          recurringMonthly: false,
+        });
+      } else if (paymentsSum > 0 && baseAmount > 0) {
+        // If invoice was paid in full, present it as paid for this competence
+        const cardDueDay = Math.min(card.dueDay || 12, maxDays);
+        const cardDueDate = `${currY}-${String(currM).padStart(2, '0')}-${String(cardDueDay).padStart(2, '0')}`;
+        const cardTitle = `Fatura Cartão ${card.name}`;
 
-        if (!alreadyExists) {
-          projectedCardBills.push({
-            id: `cc-invoice-${card.id}-${currentCompetenceStr}`,
-            title: cardTitle,
-            amount: invoiceAmount,
-            dueDate: cardDueDate,
-            category: 'Cartão de Crédito',
-            isPaid: false,
-            account: card.name,
-            paymentMethod: 'Cartão de Crédito',
-            isRecurring: true,
-            recurringMonthly: true,
-          });
-        }
+        projectedCardBills.push({
+          id: `cc-invoice-${card.id}-${currentCompetenceStr}`,
+          title: cardTitle,
+          amount: baseAmount,
+          dueDate: cardDueDate,
+          category: 'Cartão de Crédito',
+          isPaid: true,
+          account: card.name,
+          paymentMethod: 'Boleto',
+          isRecurring: false,
+          recurringMonthly: false,
+        });
       }
     });
 
@@ -387,10 +464,15 @@ export const BillRemindersPanel: React.FC<BillRemindersPanelProps> = React.memo(
 
       let updated = [...bills];
 
-      // Mark current bill as paid
-      updated = updated.map((b) =>
-        b.id === bill.id ? { ...b, isPaid: true, account: accountName, paymentMethod } : b
-      );
+      // Mark current bill as paid (or insert if it was a dynamically projected bill)
+      const billIndex = updated.findIndex((b) => b.id === bill.id);
+      if (billIndex >= 0) {
+        updated = updated.map((b) =>
+          b.id === bill.id ? { ...b, isPaid: true, account: accountName, paymentMethod } : b
+        );
+      } else {
+        updated = [{ ...bill, isPaid: true, account: accountName, paymentMethod }, ...updated];
+      }
 
       // If paying multiple installments of an installment bill
       if (bill.installments && installmentsToPay > 1) {
@@ -408,8 +490,13 @@ export const BillRemindersPanel: React.FC<BillRemindersPanelProps> = React.memo(
         });
       }
 
-      // Auto-renew if recurring
-      if (bill.recurringMonthly || bill.isRecurring) {
+      // Auto-renew if recurring (ONLY for regular recurring bills, NOT dynamic credit card invoices)
+      const isCreditCardInvoice =
+        bill.id.startsWith('cc-invoice-') ||
+        bill.id.startsWith('bill-card-') ||
+        (bill.category === 'Cartão de Crédito' && bill.title.toLowerCase().includes('fatura'));
+
+      if (!isCreditCardInvoice && (bill.recurringMonthly || bill.isRecurring)) {
         const freq = bill.recurrenceFrequency || 'mensal';
         const [y, m, d] = bill.dueDate.split('-').map(Number);
         const nextDueDateObj = new Date(y, (m || 1) - 1, d || 1);

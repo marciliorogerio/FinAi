@@ -835,10 +835,39 @@ export default function App() {
     setTransactions((prev) => [paymentTx, ...prev]);
 
     // Deduct bill payment from target account and persist to Supabase
-    const updatedAccounts = syncAccountBalance(accounts, targetAccount, payAmount, 'despesa', 'apply', paymentMethod);
+    let updatedAccounts = syncAccountBalance(accounts, targetAccount, payAmount, 'despesa', 'apply', paymentMethod);
+
+    // If it's a credit card invoice payment, also decrease the credit card's debt/balance
+    const isCreditCardInvoice =
+      bill.category === 'Cartão de Crédito' ||
+      bill.id.startsWith('cc-invoice-') ||
+      bill.id.startsWith('bill-card-') ||
+      bill.title.toLowerCase().includes('fatura');
+
+    if (isCreditCardInvoice) {
+      const cardName = (bill.account || bill.title.replace(/fatura\s*(cartão)?/i, '')).trim();
+      const cardNorm = cardName.toLowerCase();
+      const cardToken = cardNorm.split(' ')[0];
+
+      updatedAccounts = updatedAccounts.map((acc) => {
+        const accNorm = acc.name.toLowerCase().trim();
+        const matches = accNorm === cardNorm || accNorm.includes(cardToken) || cardNorm.includes(accNorm.split(' ')[0]);
+        if (matches && acc.type === 'credit') {
+          return {
+            ...acc,
+            balance: Math.max(0, Math.round(((acc.balance || 0) - payAmount) * 100) / 100),
+          };
+        }
+        return acc;
+      });
+    }
     await persistAccounts(updatedAccounts);
 
-    const updatedBills = bills.map((b) => (b.id === bill.id ? { ...b, isPaid: true } : b));
+    const billExists = bills.some((b) => b.id === bill.id);
+    const updatedBills = billExists
+      ? bills.map((b) => (b.id === bill.id ? { ...b, isPaid: true } : b))
+      : [{ ...bill, isPaid: true }, ...bills];
+
     setBills(updatedBills);
     try {
       const storageKey = user?.id ? `finai_bills_${user.id}` : 'finai_local_bills';

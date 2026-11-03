@@ -102,21 +102,55 @@ export const CreditCardsPanel: React.FC<CreditCardsPanelProps> = ({
     });
   };
 
-  // Compute current open invoice total for a credit card
+  // Get invoice payments registered for this credit card
+  const getCardPayments = (cardName: string) => {
+    const cardNorm = cardName.toLowerCase().trim();
+    const cardToken = cardNorm.split(' ')[0];
+
+    return transactions.filter((t) => {
+      if (t.type !== 'despesa') return false;
+      // Do not count credit card purchases as payments
+      if (t.paymentMethod === 'Cartão de Crédito') return false;
+
+      const descNorm = (t.description || '').toLowerCase();
+      const notesNorm = (t.notes || '').toLowerCase();
+      const isInvoicePayment =
+        descNorm.includes('fatura') ||
+        descNorm.includes('pagamento:') ||
+        notesNorm.includes('fatura') ||
+        t.category === 'Cartão de Crédito';
+
+      const matchesCard =
+        descNorm.includes(cardNorm) ||
+        descNorm.includes(cardToken) ||
+        notesNorm.includes(cardNorm) ||
+        notesNorm.includes(cardToken) ||
+        (t.account || '').toLowerCase().trim() === cardNorm;
+
+      return isInvoicePayment && matchesCard;
+    });
+  };
+
+  // Compute current open invoice total for a credit card (deducting settled payments)
   const getCardInvoiceTotal = (cardName: string) => {
     const cardTxs = getCardTransactions(cardName);
     const txSum = cardTxs.reduce((sum, t) => sum + (Number(t.amount) || 0), 0);
+    const payments = getCardPayments(cardName);
+    const paymentsSum = payments.reduce((sum, t) => sum + (Number(t.amount) || 0), 0);
 
-    if (txSum > 0) return txSum;
+    const baseAmount =
+      txSum > 0
+        ? txSum
+        : (() => {
+            const cardAcc = accounts.find(
+              (a) => a.type === 'credit' && a.name.toLowerCase().trim() === cardName.toLowerCase().trim()
+            );
+            return cardAcc && cardAcc.type === 'credit' && cardAcc.balance && cardAcc.balance > 0
+              ? cardAcc.balance
+              : 0;
+          })();
 
-    // Only return card.balance if it is strictly a credit card account (a.type === 'credit')
-    const cardAcc = accounts.find(
-      (a) => a.type === 'credit' && a.name.toLowerCase().trim() === cardName.toLowerCase().trim()
-    );
-    if (cardAcc && cardAcc.type === 'credit' && cardAcc.balance && cardAcc.balance > 0) {
-      return cardAcc.balance;
-    }
-    return 0;
+    return Math.max(0, Math.round((baseAmount - paymentsSum) * 100) / 100);
   };
 
   const handleNameChange = (val: string) => {
@@ -223,7 +257,7 @@ export const CreditCardsPanel: React.FC<CreditCardsPanelProps> = ({
         title: `Fatura Cartão ${card.name}`,
         amount: invoiceAmount,
         dueDate: new Date().toISOString().split('T')[0],
-        category: 'Outros',
+        category: 'Cartão de Crédito',
         isPaid: false,
         paymentMethod: 'Boleto',
         account: card.name,

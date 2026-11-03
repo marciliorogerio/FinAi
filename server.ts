@@ -36,6 +36,27 @@ async function startServer() {
   // Mount API router
   app.use('/api', apiRouter);
 
+  // Dedicated Service Worker endpoint guaranteeing correct JavaScript MIME type and no-cache
+  app.get('/sw.js', (_req: Request, res: Response) => {
+    const swDistPath = path.resolve(__dirname, 'dist', 'sw.js');
+    const swPublicPath = path.resolve(__dirname, 'public', 'sw.js');
+
+    res.setHeader('Content-Type', 'application/javascript; charset=utf-8');
+    res.setHeader('Cache-Control', 'no-cache, no-store, must-revalidate');
+
+    if (fs.existsSync(swDistPath)) {
+      return res.sendFile(swDistPath);
+    }
+    if (fs.existsSync(swPublicPath)) {
+      return res.sendFile(swPublicPath);
+    }
+    return res.send(`
+      self.addEventListener('install', (e) => self.skipWaiting());
+      self.addEventListener('activate', (e) => e.waitUntil(self.clients.claim()));
+      self.addEventListener('fetch', () => {});
+    `);
+  });
+
   const distPath = path.resolve(__dirname, 'dist');
   const hasDist = fs.existsSync(distPath) && fs.existsSync(path.resolve(distPath, 'index.html'));
 
