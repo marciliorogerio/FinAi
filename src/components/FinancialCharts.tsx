@@ -33,7 +33,7 @@ const COLORS = [
   '#64748b', // slate-500
 ];
 
-export const FinancialCharts: React.FC<FinancialChartsProps> = ({
+export const FinancialCharts: React.FC<FinancialChartsProps> = React.memo(({
   summary,
   transactions,
   bills = [],
@@ -353,4 +353,4 @@ export const FinancialCharts: React.FC<FinancialChartsProps> = ({
       </div>
     </div>
   );
-};
+});

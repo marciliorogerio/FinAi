@@ -113,11 +113,15 @@ export default function App() {
   const [statementAccountFilter, setStatementAccountFilter] = useState<string>('all');
   const [inputDefaultMode, setInputDefaultMode] = useState<'manual' | 'voice' | 'receipt' | 'statement'>('manual');
 
-  const handleOpenInput = (mode: 'manual' | 'voice' | 'receipt' | 'text' | 'statement' = 'manual') => {
+  const handleOpenInput = useCallback((mode: 'manual' | 'voice' | 'receipt' | 'text' | 'statement' = 'manual') => {
     const targetMode = mode === 'text' ? 'manual' : mode;
     setInputDefaultMode(targetMode);
     setActiveTab('input');
-  };
+  }, []);
+
+  const handleOpenImportStatement = useCallback(() => {
+    setIsBankStatementModalOpen(true);
+  }, []);
 
   // Transactions: empty by default for new real accounts, loaded from Supabase or demo mode
   const [transactions, setTransactions] = useState<FinancialTransaction[]>([]);
@@ -546,7 +550,7 @@ export default function App() {
   }, [transactions]);
 
   // Process input with AI (Voice, Image, or Text)
-  const handleProcessInput = async (options: {
+  const handleProcessInput = useCallback(async (options: {
     text?: string;
     audioBase64?: string;
     audioMimeType?: string;
@@ -604,10 +608,10 @@ export default function App() {
     } finally {
       setIsProcessingInput(false);
     }
-  };
+  }, [accounts, showToast]);
 
   // Confirm and save transaction directly to Supabase Backend and synchronize Account Balance
-  const handleConfirmTransaction = async (confirmedTx: FinancialTransaction) => {
+  const handleConfirmTransaction = useCallback(async (confirmedTx: FinancialTransaction) => {
     setIsSavingToDb(true);
     try {
       const baseId = confirmedTx.id || `tx-${Date.now()}-${Math.random().toString(36).substring(2, 7)}`;
@@ -781,10 +785,10 @@ export default function App() {
     } finally {
       setIsSavingToDb(false);
     }
-  };
+  }, [accounts, pendingQueue, user?.id, syncAccountBalance, persistAccounts, showToast]);
 
   // Batch import transactions from Bank Statement (OFX/CSV) and synchronize accounts
-  const handleImportTransactions = async (newTxs: FinancialTransaction[]) => {
+  const handleImportTransactions = useCallback(async (newTxs: FinancialTransaction[]) => {
     try {
       await batchSaveTransactionsToSupabase(newTxs, user?.id);
       setTransactions((prev) => [...newTxs, ...prev]);
@@ -801,10 +805,10 @@ export default function App() {
       console.error('Error batch importing statement:', err);
       showToast('Erro ao gravar lançamentos importados.', 'error');
     }
-  };
+  }, [accounts, user?.id, syncAccountBalance, persistAccounts, showToast]);
 
   // Pay scheduled bill - deducts from chosen account and records payment in statement
-  const handlePayBill = async (
+  const handlePayBill = useCallback(async (
     bill: BillReminder,
     paymentDetails?: { installmentsToPay?: number; paymentMethod?: string; accountName?: string; customAmount?: number }
   ) => {
@@ -883,10 +887,10 @@ export default function App() {
         ? `Pagamento de ${numInstallments} parcelas (${bill.title}) realizado! R$ ${payAmount.toFixed(2)} debitado de ${targetAccount}.`
         : `Conta "${bill.title}" paga! Saldo de ${targetAccount} debitado em R$ ${payAmount.toFixed(2)}.`
     );
-  };
+  }, [accounts, bills, user?.id, syncAccountBalance, persistAccounts, showToast]);
 
   // Delete transaction: revert amount from account balance
-  const handleDeleteTransaction = async (txId: string) => {
+  const handleDeleteTransaction = useCallback(async (txId: string) => {
     const txToDelete = transactions.find((t) => t.id === txId);
 
     // Remove from state immediately for responsive UI
@@ -904,10 +908,10 @@ export default function App() {
       console.warn('Could not delete from Supabase:', err);
       showToast('Removido da visualização local.', 'error');
     }
-  };
+  }, [accounts, transactions, syncAccountBalance, persistAccounts, showToast]);
 
   // Edit transaction: revert old impact, apply updated impact to accounts
-  const handleEditTransaction = async (updatedTx: FinancialTransaction) => {
+  const handleEditTransaction = useCallback(async (updatedTx: FinancialTransaction) => {
     const oldTx = transactions.find((t) => t.id === updatedTx.id);
 
     setTransactions((prev) => prev.map((t) => (t.id === updatedTx.id ? updatedTx : t)));
@@ -925,7 +929,7 @@ export default function App() {
       console.warn('Could not update in Supabase:', err);
       showToast(`Lançamento "${updatedTx.description}" atualizado.`);
     }
-  };
+  }, [accounts, transactions, syncAccountBalance, persistAccounts, showToast]);
 
   // Recalculate all account balances based on transaction history + initial balances
   const handleRecalculateBalances = useCallback(async () => {
@@ -950,13 +954,13 @@ export default function App() {
     showToast('Saldos de todas as contas recalculados com sucesso a partir do histórico!');
   }, [accounts, transactions, persistAccounts, showToast]);
 
-  const handleFilterStatementByAccount = (accountName: string) => {
+  const handleFilterStatementByAccount = useCallback((accountName: string) => {
     setStatementAccountFilter(accountName);
     setActiveTab('statement');
-  };
+  }, []);
 
   // Update category budget and persist to cloud
-  const handleUpdateBudget = async (category: string, newLimit: number) => {
+  const handleUpdateBudget = useCallback(async (category: string, newLimit: number) => {
     const updated = { ...categoryBudgets, [category]: newLimit };
     setCategoryBudgets(updated);
     const storageKey = user?.id ? `finai_category_budgets_${user.id}` : 'finai_category_budgets';
@@ -967,10 +971,10 @@ export default function App() {
       // ignore
     }
     await saveBudgetToSupabase(category, newLimit, user?.id);
-  };
+  }, [categoryBudgets, user?.id]);
 
   // Delete category budget and persist to cloud
-  const handleDeleteBudget = async (category: string) => {
+  const handleDeleteBudget = useCallback(async (category: string) => {
     const updated = { ...categoryBudgets };
     delete updated[category];
     setCategoryBudgets(updated);
@@ -983,7 +987,7 @@ export default function App() {
     }
     await deleteBudgetFromSupabase(category, user?.id);
     showToast(`Categoria "${category}" removida dos limites.`);
-  };
+  }, [categoryBudgets, user?.id, showToast]);
 
   if (isCheckingAuth) {
     return (
@@ -1064,7 +1068,7 @@ export default function App() {
             accounts={accounts}
             onNavigateTab={setActiveTab}
             onOpenInput={handleOpenInput}
-            onOpenImportStatement={() => setIsBankStatementModalOpen(true)}
+            onOpenImportStatement={handleOpenImportStatement}
             onPayBill={handlePayBill}
             onShowToast={showToast}
           />
@@ -1076,7 +1080,7 @@ export default function App() {
             accounts={accounts}
             initialAccountFilter={statementAccountFilter}
             onOpenInput={handleOpenInput}
-            onOpenImportStatement={() => setIsBankStatementModalOpen(true)}
+            onOpenImportStatement={handleOpenImportStatement}
             onEditTransaction={handleEditTransaction}
             onDeleteTransaction={handleDeleteTransaction}
             onShowToast={showToast}
@@ -1087,9 +1091,7 @@ export default function App() {
           <div className="space-y-6 pb-20 sm:pb-12 animate-in fade-in duration-150">
             <BillRemindersPanel
               bills={bills}
-              onUpdateBills={async (updated) => {
-                await persistBills(updated);
-              }}
+              onUpdateBills={persistBills}
               accounts={accounts}
               transactions={transactions}
               userId={user?.id}
@@ -1103,9 +1105,7 @@ export default function App() {
           <div className="space-y-6 pb-20 sm:pb-12 animate-in fade-in duration-150">
             <AccountsWalletsPanel
               accounts={accounts}
-              onUpdateAccounts={async (updated) => {
-                await persistAccounts(updated);
-              }}
+              onUpdateAccounts={persistAccounts}
               transactions={transactions}
               onFilterStatementByAccount={handleFilterStatementByAccount}
               onRecalculateBalances={handleRecalculateBalances}
@@ -1119,9 +1119,7 @@ export default function App() {
           <div className="space-y-6 pb-20 sm:pb-12 animate-in fade-in duration-150">
             <CreditCardsPanel
               accounts={accounts}
-              onUpdateAccounts={async (updated) => {
-                await persistAccounts(updated);
-              }}
+              onUpdateAccounts={persistAccounts}
               transactions={transactions}
               bills={bills}
               onPayBill={handlePayBill}
@@ -1149,7 +1147,7 @@ export default function App() {
             onUpdateBudget={handleUpdateBudget}
             onDeleteBudget={handleDeleteBudget}
             onShowToast={showToast}
-            onOpenInput={() => handleOpenInput('manual')}
+            onOpenInput={handleOpenInput}
           />
         )}
 
@@ -1163,13 +1161,11 @@ export default function App() {
           <InputCenterView
             accounts={accounts}
             onSaveManualTransaction={handleConfirmTransaction}
-            onUpdateAccounts={async (updated) => {
-              await persistAccounts(updated);
-            }}
+            onUpdateAccounts={persistAccounts}
             onProcessInput={handleProcessInput}
             isProcessing={isProcessingInput}
             defaultMode={inputDefaultMode}
-            onOpenImportStatement={() => setIsBankStatementModalOpen(true)}
+            onOpenImportStatement={handleOpenImportStatement}
           />
         )}
       </main>

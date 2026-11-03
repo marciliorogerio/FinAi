@@ -49,24 +49,8 @@ export const BillRemindersPanel: React.FC<BillRemindersPanelProps> = React.memo(
   onPayBill,
   onShowToast,
 }) => {
-  const [bills, setBills] = useState<BillReminder[]>(() => {
-    if (propBills) return propBills;
-    try {
-      const storageKey = userId ? `finai_bills_${userId}` : 'finai_local_bills';
-      const saved = localStorage.getItem(storageKey);
-      if (saved) return JSON.parse(saved);
-    } catch {
-      // ignore
-    }
-    return [];
-  });
-
-  // Keep internal bills synced with props
-  useEffect(() => {
-    if (propBills) {
-      setBills(propBills);
-    }
-  }, [propBills]);
+  const [localBills, setLocalBills] = useState<BillReminder[]>([]);
+  const bills = propBills || localBills;
 
   // Form & Modals state
   const [isAdding, setIsAdding] = useState(false);
@@ -125,7 +109,7 @@ export const BillRemindersPanel: React.FC<BillRemindersPanelProps> = React.memo(
   const [payAccountName, setPayAccountName] = useState<string>('');
 
   const saveBills = (updated: BillReminder[]) => {
-    setBills(updated);
+    setLocalBills(updated);
     onUpdateBills?.(updated);
     try {
       const storageKey = userId ? `finai_bills_${userId}` : 'finai_local_bills';
